@@ -52,3 +52,6 @@ Thumbs.db
 
 # Binary docs
 *.docx
+**/.agent/approvals.db-wal
+**/.agent/approvals.db-shm
+**/.agent/payments.db*

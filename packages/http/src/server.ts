@@ -14,10 +14,13 @@ import {
   verifyApproverToken,
   ApprovalError,
 } from '@agent-passport/core';
+import { SpendFirewall, providerFromEnv, intentFromEnv } from '@agent-passport/payments';
 
 export interface HttpGatewayOptions {
   cwd?: string;
   gateway?: PassportGateway;
+  /** Mount /v1/payments. Created from env (PayPal sandbox creds or mock) when AGENT_PASSPORT_PAYMENTS=1. */
+  firewall?: SpendFirewall;
 }
 
 const AuthorizeBodySchema = z.object({
@@ -279,6 +282,61 @@ export function createHttpApp(options: HttpGatewayOptions = {}): Express {
     }
   });
 
+  const firewall =
+    options.firewall ??
+    (process.env.AGENT_PASSPORT_PAYMENTS === '1'
+      ? new SpendFirewall({ cwd, gateway, provider: providerFromEnv(), intent: intentFromEnv() })
+      : undefined);
+  if (firewall) {
+    // Agent-facing: request a payment. Never returns provider identifiers beyond the payment id.
+    app.post('/v1/payments', async (req, res) => {
+      try {
+        const r = await firewall.pay(req.body);
+        res.status(r.outcome === 'blocked' ? 403 : r.outcome === 'pending_approval' ? 202 : r.outcome === 'captured' ? 200 : 409).json(r);
+      } catch {
+        res.status(500).json({ outcome: 'failed', findings: [], summary: 'Payment firewall error (no payment made)' });
+      }
+    });
+    app.get('/v1/payments/:id', (req, res) => {
+      firewall.sweepExpired();
+      const row = firewall.ledger.get(String(req.params.id));
+      if (!row) return void res.status(404).json({ error: 'not found' });
+      res.json({ payment_id: row.id, status: row.status });
+    });
+    // Approver-facing
+    app.get('/v1/payments-pending', requireApprover, (_req, res) => {
+      res.json(
+        firewall.pending().map((r) => ({
+          payment_id: r.id,
+          agent_id: r.agent_id,
+          merchant: { id: r.merchant_id, name: r.merchant_name, payee_email: r.payee_email },
+          category: r.category,
+          amount_minor: r.amount_minor,
+          currency: r.currency,
+          description: r.description,
+          findings: JSON.parse(r.findings),
+          hold_expires_at: r.hold_expires_at,
+        }))
+      );
+    });
+    const token = (req: Request) => {
+      const h = req.header('authorization') ?? '';
+      return h.startsWith('Bearer ') ? h.slice(7).trim() : undefined;
+    };
+    app.post('/v1/payments/:id/approve', requireApprover, async (req, res) => {
+      const by = GrantBodySchema.safeParse(req.body);
+      if (!by.success) return void res.status(400).json({ error: 'decidedBy is required' });
+      const r = await firewall.approve(String(req.params.id), by.data.decidedBy, token(req));
+      res.status(r.outcome === 'captured' ? 200 : 409).json(r);
+    });
+    app.post('/v1/payments/:id/reject', requireApprover, async (req, res) => {
+      const by = GrantBodySchema.safeParse(req.body);
+      if (!by.success) return void res.status(400).json({ error: 'decidedBy is required' });
+      const r = await firewall.rejectPayment(String(req.params.id), by.data.decidedBy, token(req));
+      res.status(r.outcome === 'rejected' ? 200 : 409).json(r);
+    });
+  }
+
   app.get('/v1/runs/:id/summary', (req, res) => {
     try {
       const projectConfig = loadProjectConfig(gateway.cwd);
@@ -310,6 +368,6 @@ export function createHttpServer(options: HttpGatewayOptions = {}): {
 } {
   const cwd = resolveCwd(options.cwd);
   const gateway = options.gateway ?? createGateway({ cwd });
-  const app = createHttpApp({ cwd, gateway });
+  const app = createHttpApp({ cwd, gateway, firewall: options.firewall });
   return { app, gateway, cwd };
 }

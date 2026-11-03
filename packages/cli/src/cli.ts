@@ -7,13 +7,14 @@ import { checkCommand } from './commands/check.js';
 import { policyDiffCommand, policyApproveCommand } from './commands/policy.js';
 import { requestCommand, approveCommand } from './commands/approval-cmd.js';
 import { runCommand, summaryCommand, demoCommand } from './commands/run.js';
+import { payDemoCommand, redteamCommand, mandateIssueCommand } from './commands/payments.js';
 
 const program = new Command();
 
 program
   .name('agent-passport')
   .description('Identity, authorization, policy-enforcement, and observability for AI agents')
-  .version('0.1.0');
+  .version('0.3.0');
 
 program
   .command('init')
@@ -89,6 +90,36 @@ program
   .option('--json', 'Output as JSON')
   .action(summaryCommand);
 
-program.command('demo').description('Run the required demo workflow').action(demoCommand);
+const demo = program.command('demo').description('Run the coding-agent demo workflow (default) or a named demo');
+demo.action(demoCommand);
+demo
+  .command('payments')
+  .description('Prompt-injected shopping agent: direct PayPal vs Spend Firewall')
+  .option('-i, --interactive', 'Ask before approving the held payment')
+  .action(payDemoCommand);
+
+program
+  .command('redteam')
+  .description('Run the adversarial payment suite (no-guard baseline vs firewall, plus ablation)')
+  .option('-o, --out <file>', 'Write a Markdown report')
+  .option('--json <file>', 'Write machine-readable results')
+  .option('--no-ablation', 'Skip the per-layer ablation runs')
+  .action(redteamCommand);
+
+const mandate = program.command('mandate').description('Signed task mandates for agent spending');
+mandate
+  .command('issue')
+  .description('Issue a signed mandate (prints the token to stdout)')
+  .requiredOption('-a, --agent <id>', 'Agent id the mandate is bound to')
+  .requiredOption('-t, --task <text>', 'The task, in the words the human gave it')
+  .requiredOption('-b, --budget <amount>', 'Total task budget, e.g. 300.00')
+  .requiredOption('-c, --categories <list>', 'Comma-separated allowed categories')
+  .option('--currency <code>', 'ISO 4217 currency', 'USD')
+  .option('-m, --merchants <list>', 'Comma-separated merchant allowlist')
+  .option('--approval-over <amount>', 'Require human approval above this amount')
+  .option('--per-tx <amount>', 'Per-transaction cap')
+  .option('--ttl <minutes>', 'Lifetime in minutes', '60')
+  .option('--by <who>', 'Issuer identity', 'human')
+  .action(mandateIssueCommand);
 
 program.parse();

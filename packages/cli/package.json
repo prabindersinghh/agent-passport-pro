@@ -1,7 +1,7 @@
 {
   "name": "@agent-passport/cli",
   "version": "0.2.0",
-  "description": "Agent Passport CLI — identity, policy, and orchestration for AI agents",
+  "description": "Agent Passport CLI \u2014 identity, policy, and orchestration for AI agents",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -18,7 +18,8 @@
     "@agent-passport/core": "0.2.0",
     "@agent-passport/telemetry": "0.2.0",
     "commander": "^12.1.0",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "@agent-passport/payments": "0.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

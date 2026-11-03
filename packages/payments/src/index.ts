@@ -12,3 +12,4 @@ export * from './providers/paypal.js';
 export * from './sandbox.js';
 export * from './redteam/scenarios.js';
 export * from './redteam/report.js';
+export * from './mcp-server.js';

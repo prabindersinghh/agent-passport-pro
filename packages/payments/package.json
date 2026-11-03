@@ -4,6 +4,9 @@
   "description": "Spend firewall for AI agents: signed mandates, deterministic spend policy, authorize-then-capture, argument-bound human approval",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "agent-passport-pay-mcp": "./bin/agent-passport-pay-mcp.js"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

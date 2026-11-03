@@ -167,4 +167,33 @@ describe('@agent-passport/http', () => {
       gateway.close();
     }
   });
+
+  it('payments over HTTP: agent gets 202 + hold, cannot approve; approver with credential captures', async () => {
+    const { createSandbox } = await import('@agent-passport/payments');
+    const { mkdtempSync } = await import('node:fs');
+    const sb = createSandbox(mkdtempSync(join(TEST_DIR, 'pay-')));
+    const { app } = createHttpServer({ cwd: sb.cwd, gateway: sb.firewall.gateway, firewall: sb.firewall });
+    try {
+      const mandate = sb.issue({ agentId: 'shopper', task: 'hotel', currency: 'USD', maxTotal: '300.00', approvalOver: '100.00', allowedCategories: ['travel.lodging'], allowedMerchants: ['taj-goa.example'] });
+      const res = await request(app)
+        .post('/v1/payments')
+        .send({ agent_id: 'shopper', mandate, merchant: { id: 'taj-goa.example', name: 'Taj Goa', category: 'travel.lodging' }, amount: '240.00', currency: 'USD', description: '2 nights' })
+        .expect(202);
+      expect(res.body.outcome).toBe('pending_approval');
+      const id = res.body.payment_id;
+      await request(app).post(`/v1/payments/${id}/approve`).send({ decidedBy: 'shopper' }).expect(403);
+      await request(app).get('/v1/payments-pending').expect(403);
+      const pend = await request(app).get('/v1/payments-pending').set('Authorization', `Bearer ${sb.approverToken}`).expect(200);
+      expect(pend.body[0].payment_id).toBe(id);
+      const ok = await request(app).post(`/v1/payments/${id}/approve`).set('Authorization', `Bearer ${sb.approverToken}`).send({ decidedBy: 'owner@human' }).expect(200);
+      expect(ok.body.outcome).toBe('captured');
+      expect(sb.provider.moved).toHaveLength(1);
+      await request(app)
+        .post('/v1/payments')
+        .send({ agent_id: 'shopper', mandate, merchant: { id: 'cards.example', name: 'Cards', category: 'gift_card' }, amount: '20.00', currency: 'USD' })
+        .expect(403);
+    } finally {
+      sb.close();
+    }
+  });
 });
