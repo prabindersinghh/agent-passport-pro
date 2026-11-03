@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from agent_passport.policy_engine import action_binding_hash
 from agent_passport.policy_engine import EvaluationContext, evaluate_policy
 from agent_passport.types import DecisionEffect
 
@@ -26,8 +27,9 @@ def test_approval_merge_requires_human_then_approved():
     )
     assert pending.requires_approval()
 
+    h = action_binding_hash("github.merge_pr", "repo/example/pr/1", None)
     approved = evaluate_policy(
-        {"action": "github.merge_pr", "resource": "repo/example/pr/1"},
+        {"action": "github.merge_pr", "resource": "repo/example/pr/1", "params_hash": h},
         make_ctx(
             CODER,
             approvals=[
@@ -36,7 +38,8 @@ def test_approval_merge_requires_human_then_approved():
                     "agent_id": "coder",
                     "shell_id": "coder",
                     "action": "github.merge_pr",
-                    "resource": "*",
+                    "resource": "repo/example/pr/1",
+                    "params_hash": h,
                     "reason": "test",
                     "requested_scope": "once",
                     "status": "granted",

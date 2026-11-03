@@ -210,11 +210,17 @@ export const ApprovalRequestSchema = z.object({
   resource: z.string(),
   reason: z.string(),
   requested_scope: ApprovalScopeSchema,
+  granted_scope: ApprovalScopeSchema.optional(),
   status: z.enum(['pending', 'granted', 'denied', 'expired']).default('pending'),
   created_at: z.string(),
   expires_at: z.string().optional(),
   decided_at: z.string().optional(),
   decided_by: z.string().optional(),
+  pending_expires_at: z.string().optional(),
+  consumed_at: z.string().optional(),
+  /** sha256 of canonical {action, resource, parameters}; approval is valid only for identical arguments */
+  params_hash: z.string().optional(),
+  params_preview: z.string().optional(),
   run_id: z.string().optional(),
   trace_id: z.string().optional(),
 });
@@ -238,6 +244,13 @@ export const AuditEventTypeSchema = z.enum([
   'artifact.change',
   'security.violation',
   'summary.generated',
+  'payment.evaluated',
+  'payment.held',
+  'payment.captured',
+  'payment.voided',
+  'payment.blocked',
+  'mandate.issued',
+  'mandate.rejected',
 ]);
 
 export type AuditEventType = z.infer<typeof AuditEventTypeSchema>;
@@ -323,6 +336,10 @@ export const ACTION_CATALOG = [
   'mcp.tool.call',
   'review.comment',
   'review.approve',
+  'payment.authorize',
+  'payment.capture',
+  'payment.refund',
+  'payout.send',
 ] as const;
 
 export type ActionName = (typeof ACTION_CATALOG)[number];
@@ -332,6 +349,8 @@ export const HIGH_RISK_ACTIONS = new Set<string>([
   'deployment.execute',
   'github.merge_pr',
   'filesystem.write',
+  'payment.capture',
+  'payout.send',
 ]);
 
 export const DEFAULT_DENIED_ACTIONS = new Set<string>([

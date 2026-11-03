@@ -9,6 +9,10 @@ import {
   type PassportGateway,
   type PolicyDecision,
   type ApprovalScope,
+  actionBindingHash,
+  canonicalJson,
+  verifyApproverToken,
+  ApprovalError,
 } from '@agent-passport/core';
 
 export interface HttpGatewayOptions {
@@ -33,11 +37,27 @@ const CreateApprovalBodySchema = z.object({
   resource: z.string().min(1),
   reason: z.string().optional(),
   scope: z.enum(['once', 'session', 'project', 'permanent']).optional(),
+  parameters: z.unknown().optional(),
 });
 
 const GrantBodySchema = z.object({
   decidedBy: z.string().min(1),
+  scope: z.enum(['once', 'session', 'project', 'permanent']).optional(),
 });
+
+/**
+ * Approver routes require a bearer token the agent never holds (see core/binding.ts).
+ * If no token is configured on this host, grant/deny are disabled — fail closed.
+ */
+function requireApprover(req: Request, res: Response, next: NextFunction): void {
+  const header = req.header('authorization') ?? '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : undefined;
+  if (!verifyApproverToken(token)) {
+    res.status(403).json({ error: 'Approver credential required' });
+    return;
+  }
+  next();
+}
 
 const DenyBodySchema = z.object({
   decidedBy: z.string().min(1).optional(),
@@ -172,6 +192,8 @@ export function createHttpApp(options: HttpGatewayOptions = {}): Express {
         resource: body.resource,
         reason: body.reason ?? 'Human approval requested',
         scope: (body.scope ?? 'once') as ApprovalScope,
+        paramsHash: actionBindingHash(body.action, body.resource, body.parameters),
+        paramsPreview: body.parameters === undefined ? undefined : canonicalJson(body.parameters).slice(0, 500),
       });
       res.status(201).json(request);
     } catch (err) {
@@ -180,7 +202,7 @@ export function createHttpApp(options: HttpGatewayOptions = {}): Express {
     }
   });
 
-  app.post('/v1/approvals/:id/grant', (req, res) => {
+  app.post('/v1/approvals/:id/grant', requireApprover, (req, res) => {
     const parsed = GrantBodySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'decidedBy is required' });
@@ -188,7 +210,9 @@ export function createHttpApp(options: HttpGatewayOptions = {}): Express {
     }
 
     try {
-      const result = gateway.approvals.grant(req.params.id, parsed.data.decidedBy);
+      const result = gateway.approvals.grant(String(req.params.id), parsed.data.decidedBy, {
+        scope: parsed.data.scope as ApprovalScope | undefined,
+      });
       if (!result) {
         res.status(404).json({ error: 'Approval request not found or already decided' });
         return;
@@ -203,12 +227,16 @@ export function createHttpApp(options: HttpGatewayOptions = {}): Express {
       });
       res.status(200).json(result);
     } catch (err) {
+      if (err instanceof ApprovalError) {
+        res.status(403).json({ error: err.message, code: err.code });
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Failed to grant approval';
       res.status(500).json({ error: sanitizeErrorMessage(message) });
     }
   });
 
-  app.post('/v1/approvals/:id/deny', (req, res) => {
+  app.post('/v1/approvals/:id/deny', requireApprover, (req, res) => {
     const parsed = DenyBodySchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: 'Invalid deny request' });
@@ -217,7 +245,7 @@ export function createHttpApp(options: HttpGatewayOptions = {}): Express {
 
     const decidedBy = parsed.data.decidedBy ?? 'human';
     try {
-      const result = gateway.approvals.deny(req.params.id, decidedBy);
+      const result = gateway.approvals.deny(String(req.params.id), decidedBy);
       if (!result) {
         res.status(404).json({ error: 'Approval request not found or already decided' });
         return;

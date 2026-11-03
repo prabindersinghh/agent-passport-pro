@@ -1,4 +1,4 @@
-import { createGateway } from '@agent-passport/core';
+import { createGateway, actionBindingHash, ApprovalError } from '@agent-passport/core';
 import type { ApprovalScope } from '@agent-passport/core';
 
 export async function requestCommand(
@@ -27,6 +27,7 @@ export async function requestCommand(
       resource: options.resource ?? '*',
       reason: decision.reason,
       scope: (options.scope ?? 'once') as ApprovalScope,
+      paramsHash: actionBindingHash(action, options.resource ?? '*', undefined),
     });
 
     console.log('\n🔐 HUMAN APPROVAL REQUIRED\n');
@@ -43,7 +44,20 @@ export async function requestCommand(
 export async function approveCommand(requestId: string, options: { by?: string }): Promise<void> {
   const gateway = createGateway();
   try {
-    const result = gateway.approvals.grant(requestId, options.by ?? 'human');
+    const pending = gateway.approvals.get(requestId);
+    if (pending?.params_preview) {
+      console.log(`\nBound arguments: ${pending.params_preview}`);
+    }
+    let result;
+    try {
+      result = gateway.approvals.grant(requestId, options.by ?? 'human');
+    } catch (err) {
+      if (err instanceof ApprovalError) {
+        console.error(`\n🚫 ${err.message}\n`);
+        process.exit(1);
+      }
+      throw err;
+    }
     if (!result) {
       console.error('\nApproval request not found or already decided.\n');
       process.exit(1);

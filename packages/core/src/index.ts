@@ -9,3 +9,4 @@ export * from './gateway.js';
 export * from './summary.js';
 export * from './security.js';
 export * from './memory.js';
+export * from './binding.js';

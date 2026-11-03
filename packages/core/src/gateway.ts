@@ -30,6 +30,17 @@ import {
   isProtectedPath,
   ResourceSecurityError,
 } from './security.js';
+import { actionBindingHash, canonicalJson } from './binding.js';
+
+function preview(parameters: unknown): string | undefined {
+  if (parameters === undefined) return undefined;
+  try {
+    const json = canonicalJson(parameters);
+    return json.length > 500 ? json.slice(0, 497) + '...' : json;
+  } catch {
+    return '[unserializable]';
+  }
+}
 
 export interface GatewayOptions {
   cwd?: string;
@@ -177,7 +188,34 @@ export class PassportGateway {
       approvals: this.approvals.listGranted(input.agentId),
     };
 
-    const decision = evaluatePolicy({ action: input.action, resource }, ctx);
+    let paramsHash: string;
+    try {
+      paramsHash = actionBindingHash(input.action, resource, input.parameters);
+    } catch {
+      const denied: PolicyDecision = {
+        effect: 'deny',
+        reason: 'Tool arguments could not be canonicalized — fail closed',
+        ruleIds: ['security:malformed-arguments'],
+        policySource: 'security',
+        action: input.action,
+        resource,
+        agentId: input.agentId,
+      };
+      this.audit.emit('security.violation', {
+        run_id: runId,
+        agent_id: input.agentId,
+        shell_id: input.shellId,
+        project_id: projectId,
+        action: input.action,
+        resource,
+        decision: 'deny',
+        trace_id: traceId,
+        metadata: { reason: denied.reason },
+      });
+      return denied;
+    }
+
+    const decision = evaluatePolicy({ action: input.action, resource, paramsHash }, ctx);
 
     this.audit.emit('policy.evaluated', {
       run_id: runId,
@@ -272,6 +310,8 @@ export class PassportGateway {
         reason: decision.reason,
         runId: input.runId,
         traceId,
+        paramsHash: actionBindingHash(input.action, request.resource, input.parameters),
+        paramsPreview: preview(input.parameters),
       });
       return {
         decision,
@@ -282,6 +322,31 @@ export class PassportGateway {
 
     if (isDenied(decision)) {
       return { decision, executed: false };
+    }
+
+    // Claim a once-approval atomically BEFORE running the irreversible action.
+    // Concurrent duplicates and post-failure retries lose the claim and are denied.
+    if (decision.effect === 'approved' && decision.approvalRequestId) {
+      if (!this.approvals.claim(decision.approvalRequestId)) {
+        const denied: PolicyDecision = {
+          ...decision,
+          effect: 'deny',
+          reason: `Approval ${decision.approvalRequestId} already used or expired (no replay)`,
+          ruleIds: [...decision.ruleIds, 'security:approval-replay'],
+        };
+        this.audit.emit('security.violation', {
+          run_id: input.runId,
+          agent_id: input.agentId,
+          shell_id: input.shellId,
+          project_id: projectId,
+          action: input.action,
+          resource: request.resource,
+          decision: 'deny',
+          trace_id: traceId,
+          metadata: { reason: denied.reason },
+        });
+        return { decision: denied, executed: false };
+      }
     }
 
     this.audit.emit('tool.started', {
@@ -319,10 +384,6 @@ export class PassportGateway {
         trace_id: traceId,
         metadata: { durationMs: outcome.durationMs, resultRef: outcome.resultRef },
       });
-      // Consume once-scoped approvals after successful use (no replay)
-      if (decision.effect === 'approved' && decision.approvalRequestId) {
-        this.approvals.consumeOnce(decision.approvalRequestId);
-      }
     } else {
       this.audit.emit('tool.failed', {
         run_id: input.runId,

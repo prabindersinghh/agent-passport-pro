@@ -10,6 +10,39 @@ from typing import Any
 from agent_passport.types import PolicyDecision
 
 DEFAULT_DENIED_ACTIONS = frozenset({"production.deploy", "deployment.execute"})
+HIGH_RISK_ACTIONS = frozenset(
+    {"production.deploy", "deployment.execute", "github.merge_pr", "filesystem.write", "payment.capture", "payout.send"}
+)
+
+
+def canonical_json(value: Any) -> str:
+    """Mirror of TS canonicalJson: sorted keys, no whitespace, None for undefined."""
+    import json
+    import math
+
+    def check(v: Any) -> None:
+        if isinstance(v, float) and not math.isfinite(v):
+            raise ValueError("Non-finite number in bound parameters")
+        if isinstance(v, dict):
+            for x in v.values():
+                check(x)
+        elif isinstance(v, list):
+            for x in v:
+                check(x)
+
+    check(value)
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def action_binding_hash(action: str, resource: str, parameters: Any = None) -> str:
+    import hashlib
+
+    payload = canonical_json({"action": action, "parameters": parameters, "resource": resource})
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _is_high_risk(action: str) -> bool:
+    return action in HIGH_RISK_ACTIONS or action.startswith("payment.") or action.startswith("payout.")
 
 EFFECT_PRIORITY = {
     "deny": 300,
@@ -262,6 +295,7 @@ def find_valid_approval(
     ctx: EvaluationContext,
     action: str,
     resource: str,
+    params_hash: str | None = None,
 ) -> dict[str, Any] | None:
     now = ctx.now or datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -269,6 +303,14 @@ def find_valid_approval(
     agent_id = (ctx.passport.get("metadata") or {}).get("id")
     for approval in ctx.approvals:
         if approval.get("status") != "granted":
+            continue
+        if approval.get("consumed_at"):
+            continue
+        bound = approval.get("params_hash")
+        if bound:
+            if bound != params_hash:
+                continue
+        elif _is_high_risk(action):
             continue
         if approval.get("agent_id") != agent_id:
             continue
@@ -354,7 +396,7 @@ def evaluate_policy(
         None,
     )
     if top_approval:
-        approval = find_valid_approval(ctx, action, resource)
+        approval = find_valid_approval(ctx, action, resource, request.get("params_hash"))
         if approval:
             return PolicyDecision(
                 effect="approved",

@@ -8,6 +8,7 @@ import {
   ProjectPolicy,
   ToolRequest,
   DEFAULT_DENIED_ACTIONS,
+  HIGH_RISK_ACTIONS,
 } from './types.js';
 
 export interface EvaluationContext {
@@ -224,11 +225,20 @@ function collectRules(ctx: EvaluationContext): MatchedRule[] {
 function findValidApproval(
   ctx: EvaluationContext,
   action: string,
-  resource: string
+  resource: string,
+  paramsHash?: string
 ): ApprovalRequest | undefined {
   const now = ctx.now ?? new Date();
   return (ctx.approvals ?? []).find((a) => {
     if (a.status !== 'granted') return false;
+    if (a.consumed_at) return false;
+    // Argument binding: an approval carrying a hash is valid only for identical arguments.
+    // High-risk actions additionally refuse approvals that carry no hash (legacy / wildcard grants).
+    if (a.params_hash) {
+      if (a.params_hash !== paramsHash) return false;
+    } else if (HIGH_RISK_ACTIONS.has(action) || action.startsWith('payment.') || action.startsWith('payout.')) {
+      return false;
+    }
     if (a.agent_id !== ctx.passport.metadata.id) return false;
     if (!actionMatches(a.action, action)) return false;
     if (a.resource !== '*' && !resourceMatches(a.resource, resource)) return false;
@@ -238,10 +248,10 @@ function findValidApproval(
 }
 
 export function evaluatePolicy(
-  request: Pick<ToolRequest, 'action' | 'resource'>,
+  request: Pick<ToolRequest, 'action' | 'resource'> & { paramsHash?: string },
   ctx: EvaluationContext
 ): PolicyDecision {
-  const { action, resource } = request;
+  const { action, resource, paramsHash } = request;
   const allRules = collectRules(ctx);
 
   const applicable = allRules.filter(
@@ -294,7 +304,7 @@ export function evaluatePolicy(
 
   const topApproval = applicable.find((m) => normalizeEffect(m.rule.effect) === 'approval');
   if (topApproval) {
-    const approval = findValidApproval(ctx, action, resource);
+    const approval = findValidApproval(ctx, action, resource, paramsHash);
     if (approval) {
       return {
         effect: 'approved',

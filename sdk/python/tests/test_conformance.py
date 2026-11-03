@@ -57,7 +57,11 @@ def test_conformance_case(case: dict[str, Any]):
         approvals=list(case.get("approvals") or []),
     )
     decision = evaluate_policy(
-        {"action": case["action"], "resource": case.get("resource", "*")},
+        {
+            "action": case["action"],
+            "resource": case.get("resource", "*"),
+            "params_hash": case.get("params_hash"),
+        },
         ctx,
     )
     effect = decision.effect.value if hasattr(decision.effect, "value") else decision.effect

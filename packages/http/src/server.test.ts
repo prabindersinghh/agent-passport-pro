@@ -110,4 +110,61 @@ describe('@agent-passport/http', () => {
       gateway.close();
     }
   });
+
+  it('BYPASS-5: agent cannot grant approvals over HTTP without the approver credential', async () => {
+    const { app, gateway } = createHttpServer({ cwd: TEST_DIR });
+    const prev = process.env.AGENT_PASSPORT_APPROVER_TOKEN;
+    process.env.AGENT_PASSPORT_APPROVER_TOKEN = 'test-approver-token-0123456789abcdef';
+    try {
+      const created = await request(app)
+        .post('/v1/approvals')
+        .send({ agentId: 'coder', shellId: 'coder', action: 'github.merge_pr', resource: 'repo/x/pr/9', parameters: { sha: 'abc' } })
+        .expect(201);
+      expect(created.body.params_hash).toMatch(/^[0-9a-f]{64}$/);
+      const id = created.body.request_id;
+
+      await request(app).post(`/v1/approvals/${id}/grant`).send({ decidedBy: 'human' }).expect(403);
+      await request(app)
+        .post(`/v1/approvals/${id}/grant`)
+        .set('Authorization', 'Bearer wrong-token-wrong-token-wrong')
+        .send({ decidedBy: 'human' })
+        .expect(403);
+      // Correct credential but approver claims to be the agent itself
+      await request(app)
+        .post(`/v1/approvals/${id}/grant`)
+        .set('Authorization', 'Bearer test-approver-token-0123456789abcdef')
+        .send({ decidedBy: 'coder' })
+        .expect(403);
+      const ok = await request(app)
+        .post(`/v1/approvals/${id}/grant`)
+        .set('Authorization', 'Bearer test-approver-token-0123456789abcdef')
+        .send({ decidedBy: 'alice@human' })
+        .expect(200);
+      expect(ok.body.status).toBe('granted');
+    } finally {
+      if (prev === undefined) delete process.env.AGENT_PASSPORT_APPROVER_TOKEN;
+      else process.env.AGENT_PASSPORT_APPROVER_TOKEN = prev;
+      gateway.close();
+    }
+  });
+
+  it('grant is disabled (403) when no approver credential is configured on the host', async () => {
+    const { app, gateway } = createHttpServer({ cwd: TEST_DIR });
+    const prevTok = process.env.AGENT_PASSPORT_APPROVER_TOKEN;
+    const prevHome = process.env.AGENT_PASSPORT_HOME;
+    delete process.env.AGENT_PASSPORT_APPROVER_TOKEN;
+    process.env.AGENT_PASSPORT_HOME = join(TEST_DIR, 'no-such-home');
+    try {
+      await request(app)
+        .post('/v1/approvals/whatever/grant')
+        .set('Authorization', 'Bearer anything-anything-anything')
+        .send({ decidedBy: 'human' })
+        .expect(403);
+    } finally {
+      if (prevTok !== undefined) process.env.AGENT_PASSPORT_APPROVER_TOKEN = prevTok;
+      if (prevHome === undefined) delete process.env.AGENT_PASSPORT_HOME;
+      else process.env.AGENT_PASSPORT_HOME = prevHome;
+      gateway.close();
+    }
+  });
 });

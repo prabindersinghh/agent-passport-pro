@@ -18,6 +18,7 @@ import {
   projectPolicyPath,
   agentPassportPath,
   discoverProject,
+  actionBindingHash,
 } from '../src/index.js';
 
 describe('Security — path normalization', () => {
@@ -118,9 +119,11 @@ describe('Security — gateway hardening', () => {
       agentId: 'coder',
       shellId: 'coder',
       action: 'github.merge_pr',
-      resource: '*',
+      resource: 'repo/x/pr/1',
       reason: 'test',
       scope: 'once',
+      // v0.3: high-risk approvals must be bound to exact arguments
+      paramsHash: actionBindingHash('github.merge_pr', 'repo/x/pr/1', undefined),
     });
     gw.approvals.grant(req.request_id, 'human');
     const first = gw.authorize({

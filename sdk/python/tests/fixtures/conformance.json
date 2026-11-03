@@ -38,14 +38,16 @@
         "agent_id": "coder",
         "shell_id": "coder",
         "action": "github.merge_pr",
-        "resource": "*",
+        "resource": "repo/example/pr/1",
         "reason": "conformance",
         "requested_scope": "once",
         "status": "granted",
-        "created_at": "2026-01-01T00:00:00Z"
+        "created_at": "2026-01-01T00:00:00Z",
+        "params_hash": "2310426860f916dde32ec1b2482e3b28f32c0a5e0e38a5b27af9064b03e09d6d"
       }
     ],
-    "expected_effect": "approved"
+    "expected_effect": "approved",
+    "params_hash": "2310426860f916dde32ec1b2482e3b28f32c0a5e0e38a5b27af9064b03e09d6d"
   },
   {
     "id": "org-deny-overrides",
@@ -54,5 +56,48 @@
     "role": "deployer",
     "org_deny_deploy": true,
     "expected_effect": "deny"
+  },
+  {
+    "id": "approval-unbound-wildcard-rejected-for-high-risk",
+    "action": "github.merge_pr",
+    "resource": "repo/example/pr/1",
+    "role": "coder",
+    "approvals": [
+      {
+        "request_id": "apr-conformance-1",
+        "agent_id": "coder",
+        "shell_id": "coder",
+        "action": "github.merge_pr",
+        "resource": "*",
+        "reason": "conformance",
+        "requested_scope": "once",
+        "status": "granted",
+        "created_at": "2026-01-01T00:00:00Z"
+      }
+    ],
+    "expected_effect": "approval_required",
+    "params_hash": "2310426860f916dde32ec1b2482e3b28f32c0a5e0e38a5b27af9064b03e09d6d"
+  },
+  {
+    "id": "approval-argument-swap-rejected",
+    "action": "github.merge_pr",
+    "resource": "repo/example/pr/1",
+    "role": "coder",
+    "approvals": [
+      {
+        "request_id": "apr-conformance-1",
+        "agent_id": "coder",
+        "shell_id": "coder",
+        "action": "github.merge_pr",
+        "resource": "repo/example/pr/1",
+        "reason": "conformance",
+        "requested_scope": "once",
+        "status": "granted",
+        "created_at": "2026-01-01T00:00:00Z",
+        "params_hash": "2310426860f916dde32ec1b2482e3b28f32c0a5e0e38a5b27af9064b03e09d6d"
+      }
+    ],
+    "expected_effect": "approval_required",
+    "params_hash": "0000000000000000000000000000000000000000000000000000000000000000"
   }
 ]
