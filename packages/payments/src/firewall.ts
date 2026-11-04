@@ -175,7 +175,9 @@ export class SpendFirewall {
     }
     if (passportDecision.effect === 'deny' || passportDecision.effect === 'expired') {
       findings.push({ layer: 'passport', code: 'PASSPORT_DENY', severity: 'block', message: passportDecision.reason });
-    } else if (passportDecision.effect === 'approval_required') {
+    } else if (passportDecision.effect === 'approval_required' || passportDecision.effect === 'approved') {
+      // Generic gateway grants are not accepted for payments: the only approval that
+      // releases funds is the firewall's own, bound to a specific hold.
       findings.push({ layer: 'passport', code: 'PASSPORT_APPROVAL', severity: 'escalate', message: passportDecision.reason });
     }
 
@@ -358,7 +360,9 @@ export class SpendFirewall {
       return { outcome: 'blocked', payment_id: paymentId, findings: [], summary: 'Payment not awaiting approval' };
     }
     if (row.approval_request_id) this.gateway.approvals.deny(row.approval_request_id, approver);
-    await this.releaseHold(row, 'rejected');
+    if (!(await this.releaseHold(row, 'rejected', ['pending_approval']))) {
+      return { outcome: 'blocked', payment_id: paymentId, findings: [], summary: 'Payment changed state concurrently (already approved?)' };
+    }
     return { outcome: 'rejected', payment_id: paymentId, findings: JSON.parse(row.findings), summary: `REJECTED by ${approver}; hold voided, nothing captured` };
   }
 
@@ -398,30 +402,47 @@ export class SpendFirewall {
       this.audit('payment.captured', { ...row, capture_id: captureId }, findings);
       return { outcome: 'captured', payment_id: row.id, capture_id: captureId, findings, summary: `CAPTURED ${describe(row)}` };
     } catch (e) {
-      if (e instanceof ProviderTimeoutError) {
-        // The irreversible call may or may not have happened. Ask, never retry blindly.
+      {
+        // ANY capture error is uncertain: a reset or 5xx can arrive after funds moved.
+        // Ask the provider; release the budget only when it says the hold is still intact.
         const st = await withTimeout('status', this.policy.provider_timeout_ms, this.provider.status(row.authorization_id)).catch(() => 'unknown' as const);
         if (st === 'captured') {
           this.ledger.transition(row.id, ['held'], 'captured');
           this.audit('payment.captured', row, findings);
           return { outcome: 'captured', payment_id: row.id, findings, summary: `CAPTURED ${describe(row)} (confirmed after timeout)` };
         }
-        const f: Finding = { layer: 'provider', code: 'CAPTURE_UNCERTAIN', severity: 'block', message: 'Capture timed out; state unknown. Mandate frozen pending reconciliation.' };
+        // A hold that still looks intact may have a capture in flight. Void it first, then
+        // confirm: once voided, a late capture is rejected by the provider.
+        let settled: string = st;
+        if (st === 'held') {
+          await withTimeout('void', this.policy.provider_timeout_ms, this.provider.void(row.authorization_id)).catch(() => undefined);
+          settled = await withTimeout('status', this.policy.provider_timeout_ms, this.provider.status(row.authorization_id)).catch(() => 'unknown' as const);
+          if (settled === 'captured') {
+            this.ledger.transition(row.id, ['held'], 'captured');
+            this.audit('payment.captured', row, findings);
+            return { outcome: 'captured', payment_id: row.id, findings, summary: `CAPTURED ${describe(row)} (confirmed after error)` };
+          }
+        }
+        if (settled === 'voided') {
+          const f: Finding = { layer: 'provider', code: 'CAPTURE_FAILED', severity: 'block', message: `${(e as Error).message} (provider confirms nothing captured)` };
+          await this.releaseHold(row, 'failed', ['held']);
+          return { outcome: 'failed', payment_id: row.id, findings: [...findings, f], summary: `FAILED ${describe(row)} — hold voided, provider confirms nothing captured` };
+        }
+        const f: Finding = { layer: 'provider', code: 'CAPTURE_UNCERTAIN', severity: 'block', message: `Capture ${e instanceof ProviderTimeoutError ? 'timed out' : 'errored'}; state unknown. Mandate frozen pending reconciliation.` };
         this.ledger.transition(row.id, ['held'], 'needs_reconciliation', { findings: JSON.stringify([...findings, f]) });
         if (row.mandate_id) this.ledger.freezeMandate(row.mandate_id, `capture uncertain on ${row.id}`);
         this.audit('payment.blocked', row, [...findings, f]);
         return { outcome: 'needs_reconciliation', payment_id: row.id, findings: [...findings, f], summary: `UNCERTAIN ${describe(row)} — mandate frozen until a human reconciles` };
       }
-      const f: Finding = { layer: 'provider', code: 'CAPTURE_FAILED', severity: 'block', message: (e as Error).message };
-      await this.releaseHold(row, 'failed');
-      return { outcome: 'failed', payment_id: row.id, findings: [...findings, f], summary: `FAILED ${describe(row)} — hold voided` };
     }
   }
 
-  private async releaseHold(row: PaymentRow, to: PaymentStatus): Promise<void> {
-    this.ledger.transition(row.id, ['held', 'pending_approval', 'reserved'], to);
+  private async releaseHold(row: PaymentRow, to: PaymentStatus, from: PaymentStatus[]): Promise<boolean> {
+    // Only release the budget if WE moved the row out of `from` — never one another caller is capturing.
+    if (!this.ledger.transition(row.id, from, to)) return false;
     if (row.authorization_id) await this.provider.void(row.authorization_id).catch(() => undefined);
     this.audit('payment.voided', row, []);
+    return true;
   }
 
   private replayResult(prior: PaymentRow, paramsHash: string): PaymentResult {

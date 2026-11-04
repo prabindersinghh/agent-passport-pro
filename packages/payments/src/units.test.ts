@@ -23,7 +23,7 @@ describe('merchant look-alikes', () => {
   it('detects digit swaps, homoglyphs and zero-width tricks', () => {
     expect(isLookalike('taj-g0a.example', 'taj-goa.example')).toBe(true);
     expect(isLookalike('таj-goa.example', 'taj-goa.example')).toBe(true);
-    expect(isLookalike('taj​-goa.example', 'taj-goa.example')).toBe(true);
+    expect(normalizeMerchantId('taj\u200b-goa.example')).toBe('taj-goa.example'); // zero-width stripped: same id, not a twin
     expect(isLookalike('rnarriott.example', 'marriott.example')).toBe(true);
     expect(isLookalike('taj-goa.example', 'taj-goa.example')).toBe(false);
     expect(isLookalike('hilton.example', 'taj-goa.example')).toBe(false);
@@ -56,5 +56,21 @@ describe('mandate', () => {
   });
   it('mandate schema is strict: extra fields cannot be signed in', () => {
     expect(() => signMandate({ ...m, unlimited: true } as never, key)).toThrow();
+  });
+});
+
+import { normalizeMerchantId, lookupDirectory } from './merchant.js';
+describe('merchant canonicalisation + directory lookup', () => {
+  it('collapses host variants to one id', () => {
+    for (const v of ['giftcards-now.example', 'GiftCards-Now.Example.', 'www.giftcards-now.example', 'https://www.giftcards-now.example:443/checkout?x=1', 'user@giftcards-now.example', ' giftcards-now.example​ ']) {
+      expect(normalizeMerchantId(v), v).toBe('giftcards-now.example');
+    }
+  });
+  it('subdomains inherit the registered entry; unrelated domains do not', () => {
+    const dir = { 'GiftCards-Now.example': { category: 'gift_card' } };
+    expect(lookupDirectory(dir, 'shop.giftcards-now.example:443')?.entry.category).toBe('gift_card');
+    expect(lookupDirectory(dir, 'giftcards-now.example.evil.example')).toBeUndefined();
+    expect(lookupDirectory(dir, 'example')).toBeUndefined();
+    expect(lookupDirectory({ __proto__: 1 } as never, 'constructor')).toBeUndefined();
   });
 });

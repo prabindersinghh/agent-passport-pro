@@ -49,8 +49,8 @@ Anything on the left can be controlled by an attacker through prompt injection. 
 | Injected purchase outside the task | Mandate categories / merchants, blocked categories, intent check | PI-01, PI-02, PI-06 |
 | Look-alike or homoglyph merchant | Skeleton comparison against trusted merchants, mixed-script rejection | PI-03, PI-04 |
 | LLM judge fooled by the same injection | Judge clamped to escalate-only; deterministic rules decide | PI-05, ablation row `intent` |
-| Agent lies about category | Merchant directory | PI-06 |
-| Payee swap / invoice redirection | Payee bound to merchant history and directory | AB-01 |
+| Agent lies about category | Merchant directory, canonical host lookup incl. sub-domains | PI-06, PI-08 |
+| Payee swap / invoice redirection | Payee bound to merchant history and directory; unregistered agent-supplied payee escalates | AB-01, PI-07 |
 | Agent approves itself | Approver token outside agent trust domain; approver ≠ agent | AB-02, AB-03, AB-05 |
 | Approval reused or replayed | Approval bound to one hold, claimed atomically, once | AB-04, core `approval-hardening.test.ts` |
 | Old request approved out of context | Hold TTL; unanswered = voided | AB-06 |
@@ -62,7 +62,7 @@ Anything on the left can be controlled by an attacker through prompt injection. 
 | Parser tricks, smuggled fields | Strict schema, decimal-string money | IN-01, IN-02 |
 | Idempotency key abuse | Key bound to payment hash | IN-03 |
 | Double charge on retry | Idempotency + status reconciliation, never blind retry | PF-01 |
-| Capture state unknown | `needs_reconciliation`, mandate frozen | PF-02 |
+| Capture state unknown | Any capture error → query provider; void + confirm before releasing budget; else `needs_reconciliation`, mandate frozen | PF-02, PF-04 |
 | Provider hang | Timeouts; failed hold = nothing captured | PF-03 |
 
 ## Vulnerabilities found in v0.2.0 and fixed in v0.3.0
@@ -78,3 +78,17 @@ Found by red-teaming our own previous release (commit `640b4c5`) before building
 | BYPASS-5 | HTTP `/v1/approvals/:id/grant` unauthenticated on the same port the agent uses | Agent approves over HTTP | Approver bearer token required; routes disabled when no token is configured |
 | — | Pending approvals never expired | Stale requests approvable days later | 15-minute pending TTL |
 | — | Non-finite numbers in tool arguments | Canonicalization ambiguity | Fail closed |
+
+## Vulnerabilities found by independent review of v0.3 (fixed before release)
+
+A reviewer given the code but not our test results attempted bypasses with working scripts against the built package.
+
+| ID | Issue | Impact | Fix | Regression |
+|---|---|---|---|---|
+| R-1 | Payee email was agent-controlled and only checked against history or a registered payee | First payment to an allowlisted merchant could route funds to the attacker's PayPal account; that account then became the "known" payee | Unregistered agent-supplied payee with no history escalates (`UNVERIFIED_PAYEE`) | PI-07 |
+| R-2 | Only timeouts were treated as uncertain; any other capture error released the budget | Capture succeeds, connection resets → ledger says failed, budget freed; 2× mandate spend | Every capture error queries the provider; a still-held authorization is voided and the void confirmed before release; otherwise `needs_reconciliation` + mandate frozen | PF-04, PF-02 |
+| R-3 | Directory lookup was exact-string | `www.`, trailing dot, port, sub-domain bypassed category registry | Canonical merchant ids (scheme, credentials, path, port, trailing dot, `www`, zero-width removed); lookup walks parent domains | PI-08, `units.test.ts` |
+| R-4 | `rejectPayment` could transition a row out of `held` while another approver's capture was in flight | Ledger `rejected` with money moved (two concurrent humans) | Reject only from `pending_approval`; release only if this caller won the transition | — |
+| R-5 | A generic gateway `approved` decision cleared the passport layer for payments | Agent-created approval request granted through the generic route would satisfy policy-required approval | Payments ignore generic grants; only the firewall's hold-bound approval releases funds | — |
+
+Known and not yet fixed: `GET /v1/payments/:id` is not scoped to the calling agent (status-only information leak).

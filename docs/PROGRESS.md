@@ -6,7 +6,7 @@ Last updated: **2026-11-04** (session: v0.3 approval hardening + Spend Firewall,
 
 ## Current state
 
-**v0.3.0 (branch, unmerged)** — approval bypasses fixed; `@agent-passport/payments` Spend Firewall; red-team harness (31 scenarios, 0 unauthorized captures, 3/3 legitimate tasks); 90 TS tests + 16 Python tests passing. PayPal REST adapter present but not run live.
+**v0.3.0 (branch, unmerged)** — approval bypasses fixed; `@agent-passport/payments` Spend Firewall; red-team harness (34 scenarios, 0 unauthorized captures, 3/3 legitimate tasks); 95 TS tests + 16 Python tests passing. PayPal REST adapter present but not run live.
 
 ### Previous
 

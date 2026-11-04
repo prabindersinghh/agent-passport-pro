@@ -69,26 +69,26 @@ The legitimate booking still completes. `--interactive` lets you approve or reje
 
 ```bash
 npm run redteam      # writes docs/REDTEAM_REPORT.md and docs/redteam-results.json
-npm test             # 90 TypeScript tests
+npm test             # 95 TypeScript tests
 pytest sdk/python/tests   # 16 Python tests (policy-engine parity)
 ```
 
-The red-team suite has **31 scenarios** in seven groups. Each attack scenario runs twice — once with the agent calling the payment API directly, once through the firewall — under the assumption that the agent obeys the attacker completely.
+The red-team suite has **34 scenarios** in seven groups. Each attack scenario runs twice — once with the agent calling the payment API directly, once through the firewall — under the assumption that the agent obeys the attacker completely.
 
 | | No guard | Spend Firewall |
 |---|---:|---:|
-| Attack scenarios where money left | 26 / 28 | **0 / 28** |
-| Unauthorized money moved | $14,020.00 | **$0.00** |
+| Attack scenarios where money left | 29 / 31 | **0 / 31** |
+| Unauthorized money moved | $14,600.00 | **$0.00** |
 | Legitimate tasks completed | — | **3 / 3** |
 
 | Group | Scenarios |
 |---|---|
-| Prompt injection | gift card for a stranger · category disguise · digit-swap look-alike · Cyrillic homoglyph · injection that also fools the LLM judge · agent lies about category |
+| Prompt injection | gift card for a stranger · category disguise · digit-swap look-alike · Cyrillic homoglyph · injection that also fools the LLM judge · agent lies about category · payee redirect on first payment · directory evasion via host variants |
 | Approval bypass | bait-and-switch payee · self-approval · forged approver token (50 guesses) · approval replay · approver = agent · stale approval |
 | Budget evasion | split purchases · drain across merchants · 10-way concurrent race · runaway retry loop · currency confusion |
 | Mandate forgery | tampered limit · self-signed · expired · stolen by another agent · issued to an agent with no payment capability |
 | Malformed input | negative/zero/exponent/precision amounts · smuggled `approved: true` fields · idempotency-key reuse |
-| Provider failure | response lost after capture (double-charge retry) · capture state unknown · hung authorization |
+| Provider failure | response lost after capture (double-charge retry) · capture state unknown · hung authorization · capture succeeds then connection resets |
 | Legitimate use | small booking · large booking with approval · safe retry |
 
 Full per-scenario results: [docs/REDTEAM_REPORT.md](docs/REDTEAM_REPORT.md).
@@ -97,13 +97,15 @@ Full per-scenario results: [docs/REDTEAM_REPORT.md](docs/REDTEAM_REPORT.md).
 
 | Layer removed | Scenarios that then fail |
 |---|---|
-| mandate | BL-02, BL-03, MD-03 |
+| mandate | BL-02, BL-03, MD-03, PF-04 |
 | passport | MD-05 |
 | intent (heuristic / LLM judge) | none — fully redundant |
 | spend policy | AB-02, AB-03, AB-05, AB-06, OK-02 |
-| risk | PI-05, AB-01, BL-01, BL-04 |
+| risk | PI-05, PI-07, PI-08, AB-01, BL-01, BL-04 |
 
 Two findings we think are worth stating directly. First, **no attack in the suite depended on the intent judge** — the deterministic layers stopped everything it stopped. That is the intended design: the judge is defense in depth, not the boundary. Second, PI-05 (an injection that also fully compromises the judge) is stopped by the new-merchant rule alone, which makes that rule load-bearing; we document it as such.
+
+**Independent review.** After the suite passed, we had a separate reviewer — given the code but not our conclusions — try to break the firewall. It found three real bypasses: (1) the agent could set the receiving PayPal account on a first payment to an allowlisted merchant; (2) a capture that moved money and then failed with a connection reset was treated as failed, releasing the budget, so a looping agent could spend 2× the mandate; (3) merchant-directory lookup was exact-string, so `www.`, a trailing dot or a port let a gift-card seller pass as lodging. All three are fixed, and each is now a permanent scenario (PI-07, PF-04, PI-08). The reviewer's original proof-of-concept scripts no longer move money. We list this because a suite we wrote ourselves can only test the attacks we thought of.
 
 **The harness can fail.** A test confirms that with the deterministic layers removed, prompt-injection scenarios leak money. A suite that cannot fail is not evidence.
 

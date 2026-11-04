@@ -9,6 +9,8 @@ export interface MockFaults {
   captureSucceedsThenHangs?: boolean;
   /** capture() hangs and the provider never captured. */
   hangCapture?: boolean;
+  /** capture() moves the money, then the connection resets (non-timeout error after success). */
+  captureSucceedsThenErrors?: boolean;
   captureFails?: boolean;
 }
 
@@ -16,6 +18,7 @@ export interface MovedMoney {
   captureId: string;
   authorizationId: string;
   merchant_id: string;
+  payee_email?: string;
   amount: Money;
   at: string;
 }
@@ -60,10 +63,12 @@ export class MockPayPalProvider implements PaymentProvider {
       captureId,
       authorizationId,
       merchant_id: a.req.payee.merchant_id,
+      payee_email: a.req.payee.email,
       amount: a.req.amount,
       at: new Date().toISOString(),
     });
     if (this.faults.captureSucceedsThenHangs) return new Promise(() => {});
+    if (this.faults.captureSucceedsThenErrors) throw new Error('fetch failed: ECONNRESET');
     return { captureId };
   }
 

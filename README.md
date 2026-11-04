@@ -76,13 +76,13 @@ A payment capture is the clearest irreversible action an agent can take. v0.3 pu
 
 ```bash
 npm run demo:payments   # prompt-injected shopping agent: direct PayPal vs firewall
-npm run redteam         # 31 adversarial scenarios + per-layer ablation
+npm run redteam         # 34 adversarial scenarios + per-layer ablation
 ```
 
-| 28 attack scenarios, agent fully compromised | No guard | Spend Firewall |
+| 31 attack scenarios, agent fully compromised | No guard | Spend Firewall |
 |---|---:|---:|
-| Scenarios where money left | 26 | **0** |
-| Unauthorized money moved | $14,020 | **$0** |
+| Scenarios where money left | 29 | **0** |
+| Unauthorized money moved | $14,600 | **$0** |
 | Legitimate tasks completed (of 3) | — | **3** |
 
 v0.3 also fixes five approval bypasses we found by red-teaming v0.2 (argument swap after approval, self-approval, approval reuse, wildcard permanent scope, unauthenticated grant endpoint).

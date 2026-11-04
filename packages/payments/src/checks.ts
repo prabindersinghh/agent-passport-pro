@@ -2,7 +2,7 @@ import type { Mandate } from './mandate.js';
 import type { SpendLedger } from './ledger.js';
 import { limitFor, type SpendPolicy } from './spend-policy.js';
 import { parseMajor, formatMoney } from './money.js';
-import { hasMixedScripts, isLookalike, merchantSkeleton, normalizeMerchantId } from './merchant.js';
+import { hasMixedScripts, isLookalike, merchantSkeleton, normalizeMerchantId, lookupDirectory } from './merchant.js';
 
 export type Layer = 'validation' | 'mandate' | 'passport' | 'spend_policy' | 'risk' | 'intent' | 'provider';
 export type Severity = 'block' | 'escalate' | 'info';
@@ -106,7 +106,7 @@ export function riskChecks(policy: SpendPolicy, ledger: SpendLedger, i: CheckInp
   const skeleton = merchantSkeleton(i.merchantId);
 
   // Directory: declared category / payee must match the registry entry.
-  const dir = policy.merchants[i.merchantId];
+  const dir = lookupDirectory(policy.merchants, i.merchantId)?.entry;
   if (dir) {
     if (dir.category !== i.category) {
       add('block', 'CATEGORY_MISDECLARED', `Agent declared '${i.category}' but '${i.merchantId}' is registered as '${dir.category}'`);
@@ -144,10 +144,13 @@ export function riskChecks(policy: SpendPolicy, ledger: SpendLedger, i: CheckInp
     if (policy.new_merchant === 'approval') add('escalate', 'NEW_MERCHANT', `First payment to '${i.merchantId}'`);
   }
 
-  // Payee swap: same merchant, different receiving account (invoice-redirection fraud).
+  // Payee: the account that actually receives the money. The agent must never be the
+  // one deciding it. Registered payee > previously-paid payee > human decision.
   const payees = ledger.knownPayees(i.agentId, i.merchantId);
   if (payees.length > 0 && !payees.includes(i.payeeEmail)) {
     add('block', 'PAYEE_CHANGED', `Payee for '${i.merchantId}' differs from every previous payment (${i.payeeEmail ?? 'default'})`);
+  } else if (i.payeeEmail && payees.length === 0 && !(dir?.payee_email && dir.payee_email.toLowerCase() === i.payeeEmail)) {
+    add('escalate', 'UNVERIFIED_PAYEE', `Agent-supplied payee '${i.payeeEmail}' is not registered for '${i.merchantId}'`);
   }
 
   // Duplicate: same merchant + same amount inside the window, different idempotency key — a looping agent.

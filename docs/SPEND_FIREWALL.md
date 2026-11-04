@@ -12,7 +12,7 @@ A payment capture is the clearest example of an irreversible agent action: once 
 2. **Authority comes from the human, in writing.** A signed task mandate is the only source of spending power. The agent carries it; it cannot widen it.
 3. **Deterministic layers decide. Model-based layers may only escalate.** An LLM judge reads attacker-controlled text, so it is itself injectable. Its verdict is clamped: it can send a payment to a human, never wave one through.
 4. **Hold first, capture last.** Funds are authorized (held) before any human is asked, and voided on rejection, timeout or error. Capture is called once, after every check, with a provider-side idempotency key.
-5. **Unknown means stop.** A timeout during capture is not retried. The firewall asks the provider what happened; if it still cannot tell, the payment is marked `needs_reconciliation` and the mandate is frozen.
+5. **Unknown means stop.** Any capture error — timeout, reset, 5xx — is treated as uncertain and never retried blindly. The firewall asks the provider; a still-held authorization is voided and the void confirmed before the budget is released. If it still cannot tell, the payment is marked `needs_reconciliation` and the mandate is frozen.
 6. **Approvals are bound to the exact payment.** Approval is valid for one hold — one amount, one merchant, one payee — and is claimed atomically, once.
 
 ---
@@ -202,4 +202,6 @@ Stated plainly, because they matter for anyone adopting this:
 - **Human approval is a control, not a guarantee.** A tired approver can approve a bad payment. The firewall shows the approver the merchant, payee, category, amount and every finding, and limits exposure with the task budget, but it cannot fix judgment.
 - **The ledger is local.** Budgets are enforced per firewall deployment. Several independent firewall instances for the same agent need a shared ledger (Postgres) — not implemented.
 - **Mock-provider evidence.** All measured results use the mock provider. They show the firewall's logic; they do not prove the PayPal adapter.
+- **Payee.** Funds go to the payee account sent to the provider. Register `payee_email` for merchants in the directory; an unregistered, agent-supplied payee always escalates to a human.
+- **`GET /v1/payments/:id` is not scoped to the calling agent** (status only).
 - **Heuristic intent checks are pattern-based** and easy to evade on their own. They are defense in depth; the ablation confirms no attack relied on them alone.
