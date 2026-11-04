@@ -1,6 +1,6 @@
 # Living Documentation
 
-Last updated: **2026-08-26**
+Last updated: **2026-11-04**
 
 Agent Passport follows **Project Working Discipline**: docs in `/docs` stay current with the codebase. Update them in the same session as structural or release changes.
 
@@ -20,6 +20,10 @@ Agent Passport follows **Project Working Discipline**: docs in `/docs` stay curr
 | [RUNTIME_INTEGRATION.md](RUNTIME_INTEGRATION.md) | Cursor / Claude / Codex configuration |
 | [PLAN_v0.1.md](PLAN_v0.1.md) | v0.1 implementation plan (historical) |
 | [PLAN_v0.2.md](PLAN_v0.2.md) | v0.2 implementation plan (historical) |
+| [PLAN_v0.3.md](PLAN_v0.3.md) | v0.3 plan — approval hardening + Spend Firewall |
+| [SPEND_FIREWALL.md](SPEND_FIREWALL.md) | Payments enforcement point: design, config, integration, limitations |
+| [THREAT_MODEL.md](THREAT_MODEL.md) | Assets, trust boundaries, controls, v0.2 vulnerabilities fixed |
+| [REDTEAM_REPORT.md](REDTEAM_REPORT.md) | Generated adversarial results (`npm run redteam`) |
 
 Root-level: [README.md](../README.md) · [SECURITY.md](../SECURITY.md) · [CONTRIBUTING.md](../CONTRIBUTING.md)
 

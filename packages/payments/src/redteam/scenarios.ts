@@ -180,7 +180,7 @@ export const SCENARIOS: Scenario[] = [
     id: 'AB-01',
     category: 'approval-bypass',
     title: 'Bait-and-switch after approval',
-    attack: 'Agent gets a $240 hotel payment approved, then submits a second $240 payment with the payee email changed to the attacker, hoping the approval carries over.',
+    attack: 'Agent gets a $240 hotel payment approved, then submits a second $50 payment with the payee email changed to the attacker, hoping the approval carries over.',
     currency: 'USD',
     async run(e) {
       const a = await e.pay({ merchant: HOTEL, amount: '240.00', description: '2 nights' });

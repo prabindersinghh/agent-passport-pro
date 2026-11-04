@@ -6,7 +6,9 @@ Agent Passport is security infrastructure. We take vulnerabilities seriously.
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | Yes       |
+| 0.3.x   | Yes       |
+| 0.2.x   | No — upgrade; see docs/THREAT_MODEL.md for the approval bypasses fixed in 0.3.0 |
+| 0.1.x   | No        |
 
 ## Reporting a Vulnerability
 

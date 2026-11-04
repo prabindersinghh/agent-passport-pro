@@ -1,10 +1,14 @@
 # Progress
 
-Last updated: **2026-08-26** (session: README diagram centering + living docs sync to v0.2.0)
+Last updated: **2026-11-04** (session: v0.3 approval hardening + Spend Firewall, branch `v0.3-irreversibility-firewall`)
 
 ---
 
 ## Current state
+
+**v0.3.0 (branch, unmerged)** — approval bypasses fixed; `@agent-passport/payments` Spend Firewall; red-team harness (31 scenarios, 0 unauthorized captures, 3/3 legitimate tasks); 90 TS tests + 16 Python tests passing. PayPal REST adapter present but not run live.
+
+### Previous
 
 **v0.2.0** — MCP proxy, HTTP gateway, security hardening, native Python policy, runtime docs. Published on GitHub with release tag `v0.2.0`.
 

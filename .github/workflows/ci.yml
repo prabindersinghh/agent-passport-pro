@@ -18,6 +18,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - name: Red-team suite (fails the build if any attack moves money)
+        run: npm run redteam
+      - run: npm run demo:payments
 
   python:
     runs-on: ubuntu-latest

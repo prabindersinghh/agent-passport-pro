@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
-  <a href="https://github.com/prabindersinghh/agent-passport/releases/tag/v0.2.0"><img src="https://img.shields.io/badge/release-v0.2.0-green.svg" alt="Release v0.2.0" /></a>
+  <a href="https://github.com/prabindersinghh/agent-passport/releases/tag/v0.2.0"><img src="https://img.shields.io/badge/release-v0.3.0-green.svg" alt="Release v0.2.0" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white" alt="Node >= 18" />
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/MCP-proxy-000000?logo=modelcontextprotocol&logoColor=white" alt="MCP proxy" />
@@ -61,6 +61,33 @@ Agent Passport is open-source infrastructure that sits **between** an AI agent a
 </pre>
 
 </div>
+
+<br />
+
+---
+
+<br />
+
+## New in v0.3 — Spend Firewall
+
+> **The agent is assumed compromised. The money still doesn't move.**
+
+A payment capture is the clearest irreversible action an agent can take. v0.3 puts a policy enforcement point between the agent and the payment provider: a **signed task mandate** from the human, **deterministic** spend and risk rules, an LLM intent check that can **only escalate**, and **authorize-then-capture** so every uncertain case is a reversible hold.
+
+```bash
+npm run demo:payments   # prompt-injected shopping agent: direct PayPal vs firewall
+npm run redteam         # 31 adversarial scenarios + per-layer ablation
+```
+
+| 28 attack scenarios, agent fully compromised | No guard | Spend Firewall |
+|---|---:|---:|
+| Scenarios where money left | 26 | **0** |
+| Unauthorized money moved | $14,020 | **$0** |
+| Legitimate tasks completed (of 3) | — | **3** |
+
+v0.3 also fixes five approval bypasses we found by red-teaming v0.2 (argument swap after approval, self-approval, approval reuse, wildcard permanent scope, unauthenticated grant endpoint).
+
+[Spend Firewall docs](docs/SPEND_FIREWALL.md) · [Threat model](docs/THREAT_MODEL.md) · [Red-team report](docs/REDTEAM_REPORT.md) · [Challenge submission](SUBMISSION.md)
 
 <br />
 
