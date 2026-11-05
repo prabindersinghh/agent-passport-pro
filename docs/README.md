@@ -40,4 +40,4 @@ Root-level: [README.md](../README.md) · [SECURITY.md](../SECURITY.md) · [CONTR
 
 ## Current release
 
-**v0.2.0** — https://github.com/prabindersinghh/agent-passport/releases/tag/v0.2.0
+**v0.3.0** — Agent Passport Pro: https://github.com/prabindersinghh/agent-passport-pro

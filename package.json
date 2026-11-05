@@ -1,8 +1,8 @@
 {
-  "name": "agent-passport",
+  "name": "agent-passport-pro",
   "version": "0.3.0",
   "private": true,
-  "description": "Open-source identity, authorization, policy-enforcement, and observability layer for AI agents",
+  "description": "Stop AI agents from taking irreversible actions nobody authorized: identity, policy, argument-bound approval, Spend Firewall and red-team harness",
   "license": "MIT",
   "workspaces": [
     "packages/*",
@@ -21,10 +21,26 @@
   },
   "keywords": [
     "ai-agents",
+    "ai-safety",
     "authorization",
-    "policy",
+    "guardrails",
+    "human-in-the-loop",
     "mcp",
     "opentelemetry",
+    "payments",
+    "paypal",
+    "policy",
+    "prompt-injection",
+    "red-teaming",
     "security"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prabindersinghh/agent-passport-pro.git"
+  },
+  "homepage": "https://github.com/prabindersinghh/agent-passport-pro#readme",
+  "bugs": {
+    "url": "https://github.com/prabindersinghh/agent-passport-pro/issues"
+  },
+  "author": "Prabinder Singh"
 }

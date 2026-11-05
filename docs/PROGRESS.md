@@ -6,7 +6,7 @@ Last updated: **2026-11-04** (session: v0.3 approval hardening + Spend Firewall,
 
 ## Current state
 
-**v0.3.0 (branch, unmerged)** — approval bypasses fixed; `@agent-passport/payments` Spend Firewall; red-team harness (34 scenarios, 0 unauthorized captures, 3/3 legitimate tasks); 95 TS tests + 16 Python tests passing. PayPal REST adapter present but not run live.
+**v0.3.0 — Agent Passport Pro** — approval bypasses fixed; `@agent-passport/payments` Spend Firewall; red-team harness (34 scenarios, 0 unauthorized captures, 3/3 legitimate tasks); 95 TS tests + 16 Python tests passing. PayPal REST adapter present but not run live.
 
 ### Previous
 
@@ -15,7 +15,7 @@ Last updated: **2026-11-04** (session: v0.3 approval hardening + Spend Firewall,
 Baseline commit: `b1f27a2`  
 Release tag: `v0.2.0` → `a900e95`
 Latest `main`: post-release README + docs polish
-Repository: https://github.com/prabindersinghh/agent-passport
+Repository: https://github.com/prabindersinghh/agent-passport-pro (continues https://github.com/prabindersinghh/agent-passport)
 
 ---
 

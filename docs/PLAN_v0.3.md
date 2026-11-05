@@ -1,6 +1,6 @@
 # PLAN v0.3 — Approval hardening + Spend Firewall
 
-Status: implemented on branch `v0.3-irreversibility-firewall`, pending maintainer review before merge.
+Status: implemented and released as Agent Passport Pro v0.3.0.
 
 ## Why
 

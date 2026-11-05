@@ -1,8 +1,8 @@
-# Agent Passport v0.3 — stopping AI agents from moving money they were never authorized to move
+# Agent Passport Pro (v0.3) — stopping AI agents from moving money they were never authorized to move
 
 **Challenge:** Drawerrr AI Safety Challenge — Prevent irreversible AI autonomous actions
 **Categories:** Best overall · Best in safeguarding financial transactions · Best in safeguarding delegated actions
-**Repository:** https://github.com/prabindersinghh/agent-passport (branch `v0.3-irreversibility-firewall`)
+**Repository:** https://github.com/prabindersinghh/agent-passport-pro (MIT licensed)
 **Author:** Prabinder Singh, Thapar Institute of Engineering & Technology (student)
 
 ---
@@ -37,8 +37,7 @@ Architecture and configuration: [docs/SPEND_FIREWALL.md](docs/SPEND_FIREWALL.md)
 ## 3. Demonstration
 
 ```bash
-git clone https://github.com/prabindersinghh/agent-passport && cd agent-passport
-git checkout v0.3-irreversibility-firewall
+git clone https://github.com/prabindersinghh/agent-passport-pro && cd agent-passport-pro
 npm install && npm run build
 npm run demo:payments
 ```
