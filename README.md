@@ -12,6 +12,10 @@
 </p>
 
 <p align="center">
+  <em>The freedom to build your own structured swarm of agents — researcher, coder, reviewer, deployer, shopper — each with its own passport, its own permissions and its own limits, so no agent can act beyond the role you gave it.</em>
+</p>
+
+<p align="center">
   Identity · Policy · Argument-bound human approval · Spend Firewall · Red-team harness · Audit
 </p>
 
@@ -26,18 +30,26 @@
 </p>
 
 <p align="center">
-  <a href="#-60-second-demo">Demo</a> ·
-  <a href="#-results">Results</a> ·
-  <a href="#-how-it-works">How it works</a> ·
+  <a href="#1-project-overview">Overview</a> ·
+  <a href="#2-safety-approach">Safety approach</a> ·
+  <a href="#3-supporting-evidence">Evidence</a> ·
+  <a href="#4-limitations">Limitations</a> ·
   <a href="#-quickstart">Quickstart</a> ·
-  <a href="#-integrate">Integrate</a> ·
   <a href="docs/THREAT_MODEL.md">Threat model</a> ·
   <a href="docs/REDTEAM_REPORT.md">Red-team report</a>
 </p>
 
+> **For reviewers** — this README follows the four areas requested for the AI Safety Challenge:
+> **[1. Project overview](#1-project-overview)** · **[2. Safety approach](#2-safety-approach)** · **[3. Supporting evidence](#3-supporting-evidence)** · **[4. Limitations](#4-limitations)**.
+> Everything below them (quickstart, integration, structure) is for people adopting the project.
+
 ---
 
-## The problem
+## 1. Project overview
+
+**Agent Passport Pro is an open-source authorization layer that sits between an AI agent and the tools it uses, and stops the agent from taking irreversible actions — moving money, merging code, deploying — that no human authorized.** It is built for the case that matters most: the agent has read attacker-controlled text and is now following the attacker's instructions.
+
+### The problem
 
 Tool-using agents now merge code, deploy, send email and **move money**. Some of those actions cannot be undone: once a payment is captured or a deploy is live, a later refusal does not reverse the harm.
 
@@ -47,9 +59,20 @@ The usual safeguard is a sentence in the system prompt. It fails exactly when it
 
 The agent is not broken. It is following instructions it should not have trusted. **The fix cannot live inside the model.**
 
-## The approach
+### What it does
 
-Agent Passport Pro sits **between the agent and its tools** and assumes the agent may already be compromised.
+- **Spend Firewall** (`@agent-passport/payments`) — a policy enforcement point in front of the payment provider. The agent asks to pay; the firewall checks the request against a human-signed task mandate and deterministic spend and risk rules, holds the funds, and only captures them when every check passes or a human approves that exact payment.
+- **Hardened approval core** — the same guarantees for any protected action (merge a PR, deploy, write files): identity per agent, policy-as-code, and human approval bound to the action's exact arguments.
+- **Drop-in integration** — an MCP server exposing a single `pay` tool, an MCP proxy for any other tool server, an HTTP gateway, and TypeScript and Python libraries.
+- **Red-team harness** — 34 reproducible attack and normal-use scenarios that run in CI, with a no-guard baseline and a per-layer ablation, so the safety claims can be checked rather than trusted.
+
+---
+
+## 2. Safety approach
+
+Agent Passport Pro **assumes the agent is already compromised**. Every safeguard must hold even if the model does exactly what injected text tells it, so none of them live inside the model.
+
+### Design principles
 
 | Principle | What it means in practice |
 |---|---|
@@ -60,9 +83,79 @@ Agent Passport Pro sits **between the agent and its tools** and assumes the agen
 | **Approval is bound to exact arguments** | Approving `merge sha=SAFE` does not authorize `merge sha=EVIL`. One approval, one action, claimed atomically, once. |
 | **Unknown means stop** | A capture that errors is never retried blindly. Confirm with the provider, or freeze and reconcile. |
 
+### How a payment is decided
+
+```mermaid
+flowchart TD
+    H([Human]) -- signs --> M[/Task mandate<br/>budget · categories · merchants · expiry/]
+    A([AI agent<br/>assume compromised]) -- "pay(request) + mandate" --> V
+
+    subgraph FW[Spend Firewall — separate process, holds provider credentials]
+      V[1 · Validation<br/>strict schema · decimal money · ISO 4217] --> MD[2 · Mandate<br/>HMAC · expiry · bound agent]
+      MD --> P[3 · Passport<br/>identity · capability · project policy]
+      P --> I[4 · Intent judge<br/>escalate-only]
+      I --> TX
+      subgraph TX[Atomic transaction]
+        S[5 · Spend policy<br/>per-tx · daily · task budget]
+        R[6 · Risk<br/>look-alikes · payee · split · velocity · duplicates]
+        RES[Reserve budget]
+        S --> R --> RES
+      end
+    end
+    M -. verified at .-> MD
+
+    TX -- any BLOCK --> B[🚫 Blocked<br/>nothing reaches provider]
+    TX -- pass --> HOLD[Provider authorize<br/>funds HELD · reversible]
+    HOLD -- any ESCALATE --> AP{Human approver<br/>token agent never has}
+    AP -- approve --> CAP
+    AP -- reject / timeout --> VOID[Void hold]
+    HOLD -- clean --> CAP[✅ Capture<br/>irreversible · once · idempotent]
+    CAP -. error .-> REC[Query provider → void + confirm<br/>or freeze mandate & reconcile]
+```
+
+Every decision, with the findings that drove it, goes to an append-only audit log.
+
+### Beyond payments: the same core protects code and infrastructure
+
+Agent Passport Pro started as an authorization layer for coding agents, and the hardened approval core applies to every protected action — not just payments:
+
+```text
+✅ Read repository              ALLOW
+✅ Modify source                ALLOW
+✅ Run tests                    ALLOW
+✅ Create pull request          ALLOW
+🔐 Merge pull request           APPROVAL_REQUIRED   ← bound to the exact PR + commit
+🚫 Deploy production            DENY                ← project policy
+```
+
+```bash
+cd examples/example-app
+node ../../packages/cli/dist/cli.js init --yes
+node ../../packages/cli/dist/cli.js demo
+```
+
+**Build your own structured swarm of agents.** One LLM runtime, or many, can act as several **scoped identities** — Researcher, Coder, Reviewer, Deployer, Shopper — each with its own passport. You decide the structure: who can read, who can write, who can spend and how much, and which actions need a human. Permissions never transfer silently between agents, and every role switch is audited.
+
+### Guarantees and the mechanism behind each
+
+| Guarantee | Mechanism |
+|---|---|
+| The model is never the security boundary | Every protected action is evaluated outside the LLM, before execution |
+| No self-escalation | Approver token outside the agent's trust domain; approver ≠ requesting agent |
+| No bait-and-switch | Approvals store `sha256(canonical action + resource + arguments)` |
+| No replay | Once-approvals claimed atomically **before** execution, never refunded |
+| No budget races | Check-and-reserve inside one `IMMEDIATE` SQLite transaction |
+| No double charges | Idempotency keys bound to the payment hash; provider-side request ids |
+| Fail closed | Malformed input, unknown provider state, missing credentials → deny or freeze |
+| Accountability | Append-only audit log; machine-derived run summaries; OpenTelemetry spans |
+
+**Deployment matters:** run the firewall / gateway as a separate process holding provider credentials; give the approver token only to humans. Full analysis: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
+
 ---
 
-## ⚡ 60-second demo
+## 3. Supporting evidence
+
+### Demo: a prompt-injected shopping agent
 
 ```bash
 git clone https://github.com/prabindersinghh/agent-passport-pro.git
@@ -95,9 +188,7 @@ A shopping agent is asked to *"book a hotel in Goa for 2 nights, under $300"*. T
 
 The attack fails. **The legitimate booking still completes.**
 
----
-
-## 📊 Results
+### Red-team results
 
 `npm run redteam` runs **34 scenarios** (31 attacks + 3 legitimate tasks). Every attack runs twice: once with the agent calling the payment API directly, once through the firewall — with the agent obeying the attacker completely.
 
@@ -117,7 +208,7 @@ The attack fails. **The legitimate booking still completes.**
 | **Malformed input** | `-50.00`, `1e5`, `99.999`, `NaN` · smuggled `approved: true` · idempotency-key reuse |
 | **Provider failure** | response lost after capture · capture state unknown · hung authorization · capture succeeds then connection resets |
 
-### Which layer actually does the work
+#### Which layer actually does the work
 
 The suite is re-run with each layer switched off. Listed scenarios are the ones that layer stops on its own.
 
@@ -131,67 +222,57 @@ The suite is re-run with each layer switched off. Listed scenarios are the ones 
 
 **No attack depended on the AI judge.** That is the design: deterministic layers are the boundary; the model is defense in depth.
 
-### We attacked our own work — twice
+#### We attacked our own work — twice
 
 1. **Before building**, we red-teamed our own v0.2 release and found **five approval bypasses**, including *approve a merge of a safe commit, then merge a malicious one on the same approval* and *the agent approves itself over HTTP*. All fixed, with regression tests.
 2. **After the suite passed**, an independent reviewer — given the code, not our conclusions — found **three more**: payee redirect on a first payment, budget release after a capture that moved money then errored, and directory evasion via host variants. All fixed; each is now a permanent scenario (PI-07, PF-04, PI-08).
 
 Full write-up: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) · per-scenario results: [docs/REDTEAM_REPORT.md](docs/REDTEAM_REPORT.md)
 
+### Tests
+
+| Suite | Command | Result |
+|---|---|---|
+| TypeScript unit + integration (core, payments, HTTP, MCP, CLI) | `npm test` | 95 passing |
+| Python SDK, incl. cross-language conformance with TypeScript | `pytest sdk/python/tests` | 16 passing |
+| Adversarial red-team suite (fails CI if any attack moves money) | `npm run redteam` | 31/31 attacks stopped · 3/3 legitimate tasks completed |
+| Payment demo | `npm run demo:payments` | USD 890 lost without the firewall → USD 0 with it |
+
+All of these run on every push in [GitHub Actions](.github/workflows/ci.yml). Regression tests for every vulnerability we found are in [`packages/core/src/approval-hardening.test.ts`](packages/core/src/approval-hardening.test.ts) and [`packages/payments/src/redteam/scenarios.ts`](packages/payments/src/redteam/scenarios.ts).
+
+### Documentation
+
+| | |
+|---|---|
+| [SPEND_FIREWALL.md](docs/SPEND_FIREWALL.md) | Design, configuration, integration, limitations |
+| [THREAT_MODEL.md](docs/THREAT_MODEL.md) | Assets, trust boundaries, controls, every vulnerability found and fixed |
+| [REDTEAM_REPORT.md](docs/REDTEAM_REPORT.md) | Generated per-scenario results and ablation |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Packages, invariants, data flow |
+| [MCP.md](docs/MCP.md) · [HTTP_GATEWAY.md](docs/HTTP_GATEWAY.md) · [RUNTIME_INTEGRATION.md](docs/RUNTIME_INTEGRATION.md) | Integration guides |
+| [SUBMISSION.md](SUBMISSION.md) | Drawerrr AI Safety Challenge write-up |
+
 ---
 
-## 🧠 How it works
+## 4. Limitations
 
-```mermaid
-flowchart TD
-    H([Human]) -- signs --> M[/Task mandate<br/>budget · categories · merchants · expiry/]
-    A([AI agent<br/>assume compromised]) -- "pay(request) + mandate" --> V
+Known weaknesses, stated plainly:
 
-    subgraph FW[Spend Firewall — separate process, holds provider credentials]
-      V[1 · Validation<br/>strict schema · decimal money · ISO 4217] --> MD[2 · Mandate<br/>HMAC · expiry · bound agent]
-      MD --> P[3 · Passport<br/>identity · capability · project policy]
-      P --> I[4 · Intent judge<br/>escalate-only]
-      I --> TX
-      subgraph TX[Atomic transaction]
-        S[5 · Spend policy<br/>per-tx · daily · task budget]
-        R[6 · Risk<br/>look-alikes · payee · split · velocity · duplicates]
-        RES[Reserve budget]
-        S --> R --> RES
-      end
-    end
-    M -. verified at .-> MD
+- **Mock-provider evidence.** All measured results use a mock that models PayPal Orders v2 authorize/capture/void with fault injection. The PayPal REST adapter is included but experimental and not run in CI.
+- **Category trust.** Outside the merchant directory, an agent's declared category is checked for consistency, not proven. Production should source category from the provider's merchant category code.
+- **Local ledger.** Budgets are enforced per firewall instance; multi-instance deployments need a shared ledger (planned).
+- **Human approval is a control, not a guarantee.** The approver sees amount, merchant, payee, category and every finding — but can still approve a bad payment.
+- **Heuristic intent rules are easy to evade alone.** The ablation shows nothing depends on them.
+- **Deployment is part of the boundary.** The guarantees hold only when the firewall runs as a separate process holding the provider credentials, and the agent never receives the approver token or the mandate signing key. Running it in-process with the agent is convenient for tests but shares the agent's trust domain.
+- **New-merchant escalation is load-bearing.** The ablation shows one attack (PI-05, an injection that also fools the LLM judge) is stopped by that rule alone; setting `new_merchant: allow` removes that protection.
+- **Status endpoint is not agent-scoped.** `GET /v1/payments/:id` returns a payment's status to any caller who knows its id (information only; it cannot move money).
 
-    TX -- any BLOCK --> B[🚫 Blocked<br/>nothing reaches provider]
-    TX -- pass --> HOLD[Provider authorize<br/>funds HELD · reversible]
-    HOLD -- any ESCALATE --> AP{Human approver<br/>token agent never has}
-    AP -- approve --> CAP
-    AP -- reject / timeout --> VOID[Void hold]
-    HOLD -- clean --> CAP[✅ Capture<br/>irreversible · once · idempotent]
-    CAP -. error .-> REC[Query provider → void + confirm<br/>or freeze mandate & reconcile]
-```
+### Areas for improvement
 
-Every decision, with the findings that drove it, goes to an append-only audit log.
-
-### The same core protects code and infrastructure
-
-Agent Passport Pro started as an authorization layer for coding agents, and the hardened approval core applies to every protected action — not just payments:
-
-```text
-✅ Read repository              ALLOW
-✅ Modify source                ALLOW
-✅ Run tests                    ALLOW
-✅ Create pull request          ALLOW
-🔐 Merge pull request           APPROVAL_REQUIRED   ← bound to the exact PR + commit
-🚫 Deploy production            DENY                ← project policy
-```
-
-```bash
-cd examples/example-app
-node ../../packages/cli/dist/cli.js init --yes
-node ../../packages/cli/dist/cli.js demo
-```
-
-One LLM runtime can act as several **scoped identities** — Researcher, Coder, Reviewer, Deployer, Shopper — each with its own passport. Permissions never transfer silently between them, and every role switch is audited.
+- [ ] Shared Postgres ledger for multi-instance deployments
+- [ ] Approval UI (web + Slack) on top of the approver API
+- [ ] Argument-aware payment mapping in the MCP proxy, so third-party payment MCP servers sit behind the firewall
+- [ ] Live PayPal sandbox run in CI
+- [ ] Same stage-then-commit pattern for email sends and infrastructure changes
 
 ---
 
@@ -328,23 +409,6 @@ approval_ttl_minutes: 15
 
 ---
 
-## 🛡️ Security model
-
-| Guarantee | Mechanism |
-|---|---|
-| The model is never the security boundary | Every protected action is evaluated outside the LLM, before execution |
-| No self-escalation | Approver token outside the agent's trust domain; approver ≠ requesting agent |
-| No bait-and-switch | Approvals store `sha256(canonical action + resource + arguments)` |
-| No replay | Once-approvals claimed atomically **before** execution, never refunded |
-| No budget races | Check-and-reserve inside one `IMMEDIATE` SQLite transaction |
-| No double charges | Idempotency keys bound to the payment hash; provider-side request ids |
-| Fail closed | Malformed input, unknown provider state, missing credentials → deny or freeze |
-| Accountability | Append-only audit log; machine-derived run summaries; OpenTelemetry spans |
-
-**Deployment matters:** run the firewall / gateway as a separate process holding provider credentials; give the approver token only to humans. Full analysis: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
-
----
-
 ## 📁 Project structure
 
 ```text
@@ -360,39 +424,6 @@ sdk/python/     native Python policy engine with cross-language conformance fixt
 examples/       example-app with four scoped agent shells
 docs/           architecture, threat model, spend firewall, red-team report
 ```
-
----
-
-## ⚠️ Limitations
-
-Stated plainly, because they matter for anyone adopting this:
-
-- **Mock-provider evidence.** All measured results use a mock that models PayPal Orders v2 authorize/capture/void with fault injection. The PayPal REST adapter is included but experimental and not run in CI.
-- **Category trust.** Outside the merchant directory, an agent's declared category is checked for consistency, not proven. Production should source category from the provider's merchant category code.
-- **Local ledger.** Budgets are enforced per firewall instance; multi-instance deployments need a shared ledger (planned).
-- **Human approval is a control, not a guarantee.** The approver sees amount, merchant, payee, category and every finding — but can still approve a bad payment.
-- **Heuristic intent rules are easy to evade alone.** The ablation shows nothing depends on them.
-
-## 🗺️ Roadmap
-
-- [ ] Shared Postgres ledger for multi-instance deployments
-- [ ] Approval UI (web + Slack) on top of the approver API
-- [ ] Argument-aware payment mapping in the MCP proxy, so third-party payment MCP servers sit behind the firewall
-- [ ] Live PayPal sandbox run in CI
-- [ ] Same stage-then-commit pattern for email sends and infrastructure changes
-
----
-
-## 📚 Documentation
-
-| | |
-|---|---|
-| [SPEND_FIREWALL.md](docs/SPEND_FIREWALL.md) | Design, configuration, integration, limitations |
-| [THREAT_MODEL.md](docs/THREAT_MODEL.md) | Assets, trust boundaries, controls, every vulnerability found and fixed |
-| [REDTEAM_REPORT.md](docs/REDTEAM_REPORT.md) | Generated per-scenario results and ablation |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Packages, invariants, data flow |
-| [MCP.md](docs/MCP.md) · [HTTP_GATEWAY.md](docs/HTTP_GATEWAY.md) · [RUNTIME_INTEGRATION.md](docs/RUNTIME_INTEGRATION.md) | Integration guides |
-| [SUBMISSION.md](SUBMISSION.md) | Drawerrr AI Safety Challenge write-up |
 
 ## 🤝 Contributing
 
